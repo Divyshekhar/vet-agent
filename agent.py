@@ -6,6 +6,7 @@ from memory import get_history, save_message
 from google.genai import types
 load_dotenv()
 
+
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 book_appointment_tool = {
