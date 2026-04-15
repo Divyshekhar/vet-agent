@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from tools import book_appointment
 from memory import get_history, save_message
 from google.genai import types
+from fastapi import HTTPException
 load_dotenv()
 
 
@@ -137,12 +138,20 @@ def run_agent(session_id, user_message):
     tools = types.Tool(function_declarations=[book_appointment_tool])
     config = types.GenerateContentConfig(tools=[tools])
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=messages,
-        config=config
-    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=messages,
+            config=config
+        )
+    except Exception as e:
+        error_str = str(e)
 
+        if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+                raise HTTPException(status_code=429, detail="⚠️ AI response delayed due to quota limits. Please try again later.")
+
+        print("Error generating content:", e)
+        raise HTTPException(status_code=500, detail="❌ Failed to generate AI response.")
     # 🔥 IMPORTANT: Check if tool call exists
     if response.candidates and response.candidates[0].content.parts:
         parts = response.candidates[0].content.parts[0]
@@ -163,10 +172,20 @@ def run_agent(session_id, user_message):
                 result = "Unknown tool"
 
             # 🔹 Send result back to LLM
-            followup = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=f"Tool result: {result}"
-            )
+            try:
+                followup = client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=f"Tool result: {result}"
+                )
+                final_text = followup.text
+
+            except Exception as e:
+                error_str = str(e)
+
+                if "RESOURCE_EXHAUSTED" in error_str or "429" in error_str:
+                    raise HTTPException(status_code=429, detail="⚠️ AI response delayed due to quota limits. Please try again later.")
+                final_text = str(result)  # fallback to raw tool result
+            
 
             final_text = followup.text
 
